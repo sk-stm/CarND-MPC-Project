@@ -2,6 +2,7 @@
 #include <cppad/cppad.hpp>
 #include <cppad/ipopt/solve.hpp>
 #include "Eigen-3.3/Eigen/Core"
+#include "Eigen-3.3/Eigen/Geometry"
 
 using CppAD::AD;
 
@@ -119,3 +120,70 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // creates a 2 element double vector.
   return {};
 }
+
+
+tuple<double, double> MPC::Calculate(vector<double> const & waypoints_global_x, vector<double> const & waypoints_global_y, double px, double py, double psi, double v) {
+  
+  // set new vehicle state
+  vehicleState_ = VehicleState(px, py, psi, v);
+
+  // transform waypoints from global to local coordinate system
+  transformWaypoints(waypoints_global_x, waypoints_global_y);
+
+  // fit a polynome to the local waypoints
+  calcReferenceLine();
+  
+  
+  
+  double steer_value = 0;
+  double throttle_value = 0;
+
+  return std::make_pair(steer_value, throttle_value);
+}
+
+void MPC::transformWaypoints(vector<double> const & waypoints_global_x, vector<double> const & waypoints_global_y) {
+  assert(waypoints_global_x.size() == waypoints_global_y.size() && "input vectors have to have the same size!");
+
+  // resize lists (does not clear)
+  waypoints_local_x_.resize(waypoints_global_x.size());
+  waypoints_local_y_.resize(waypoints_global_y.size());
+
+  // matrix transforming the waypoints from the global frame to the local one
+  Eigen::Rotation2D<double> rot(vehicleState_.psi);
+  Eigen::Translation2d trans(vehicleState_.x, vehicleState_.y);
+  Eigen::Transform<double, 2, Eigen::Affine> tf = trans * rot;
+  tf = tf.inverse();
+
+  // transform points
+  for(size_t i = 0; i < waypoints_global_x.size(); ++i) {
+    Eigen::Vector2d wp(waypoints_global_x[i], waypoints_global_y[i]);
+    Eigen::Vector2d wpLocal = tf * wp;
+    waypoints_local_x_[i] = wpLocal[0];
+    waypoints_local_y_[i] = wpLocal[1];
+  }
+}
+
+
+void MPC::calcReferenceLine() {
+  referenceLine_ = Polynome(waypoints_local_x_, waypoints_local_y_);
+}
+
+tuple<vector<double>, vector<double>> MPC::GetLocalWaypoints() {
+  return std::make_pair(waypoints_local_x_, waypoints_local_y_);
+}
+
+tuple<vector<double>, vector<double>> MPC::GetLocalMPCPoints() {
+  // TODO: remove me, this is only a test for the polynome
+  vector<double> dummy_x, dummy_y;
+
+  double start_x = waypoints_local_x_[0];
+  const double dx = 0.2;
+  for(double x = waypoints_local_x_.front(); x <= waypoints_local_x_.back(); x += dx) {
+    double y = referenceLine_.eval(x);
+    dummy_x.push_back(x);
+    dummy_y.push_back(y);
+  }
+
+  return std::make_pair(dummy_x, dummy_y);
+}
+

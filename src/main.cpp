@@ -1,5 +1,5 @@
 #include <math.h>
-#include <uWS/uWS.h>
+#include <uWS.h>
 #include <chrono>
 #include <iostream>
 #include <thread>
@@ -8,6 +8,7 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "MPC.h"
 #include "json.hpp"
+#include <tuple>
 
 // for convenience
 using json = nlohmann::json;
@@ -100,6 +101,7 @@ int main() {
           */
           double steer_value;
           double throttle_value;
+          std::tie(steer_value, throttle_value) = mpc.Calculate(ptsx, ptsy, px, py, psi, v);
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
@@ -110,9 +112,7 @@ int main() {
           //Display the MPC predicted trajectory 
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
-
-          //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
-          // the points in the simulator are connected by a Green line
+          std::tie(mpc_x_vals, mpc_y_vals) = mpc.GetLocalMPCPoints();
 
           msgJson["mpc_x"] = mpc_x_vals;
           msgJson["mpc_y"] = mpc_y_vals;
@@ -120,6 +120,7 @@ int main() {
           //Display the waypoints/reference line
           vector<double> next_x_vals;
           vector<double> next_y_vals;
+          std::tie(next_x_vals, next_y_vals) = mpc.GetLocalWaypoints();
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
