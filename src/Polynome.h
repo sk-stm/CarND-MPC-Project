@@ -1,3 +1,5 @@
+#pragma once
+
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 
@@ -8,7 +10,7 @@ using namespace std;
 
 class Polynome {
 public:
-    Polynome() {};
+    Polynome() = default;
 
     /**
      * Constructor fitting a polynome to the given values.
@@ -38,6 +40,27 @@ public:
 
         return result;
     }
+
+    /**
+     * Evaluate the derivative of the polynome at x.
+     **/ 
+    double derivative(double x) {
+      double result = 0.0;
+
+      for (int i = 1; i < coeffs_.size(); i++) {
+          result += i*coeffs_[i] * pow(x, i-1);
+      }
+
+      return result;
+    }
+
+    /**
+     * Returns the coefficients of the polynome.
+     **/ 
+    Eigen::VectorXd getCoeffs() {
+      return coeffs_;
+    }
+
   
 private:
   /**
@@ -66,7 +89,10 @@ private:
     coeffs_ = result;
   }
 
+  //! the polynomials coefficients (inverse order)
   Eigen::VectorXd coeffs_;
+  //! the order of the polynomial
   int order_ {0};
+  //! the maximum x-value of the input points (maps to a "valid length"; min_x is assumed to be <= 0)
   double max_x;
 };
