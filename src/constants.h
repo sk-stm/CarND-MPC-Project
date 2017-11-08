@@ -24,13 +24,13 @@ string getOptions() {
 /*********************************************/
 
 //! number of trajectory points
-const size_t N = 20;
+const size_t N = 10;
 //! time step between trajectory points
 const double dt = 0.2;
 // steering ration, tunes by Udacity
 const double Lf = 2.67;
 
-//! target velocity
+//! target velocity (m/s)
 const double ref_v = 20;
 
 

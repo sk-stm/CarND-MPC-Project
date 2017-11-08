@@ -5,7 +5,6 @@ cmake_minimum_required (VERSION 3.5)
 # -g allows for gdb debugging
 # turn on -03 for best performance
 add_definitions(-std=c++11 -O3)
-#add_definitions(-std=c++11)
 
 set(CXX_FLAGS "-Wall")
 set(CMAKE_CXX_FLAGS "${CXX_FLAGS}")
@@ -30,5 +29,5 @@ endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 add_executable(mpc ${sources})
 
-target_link_libraries(mpc ipopt z ssl uv uWS)
+target_link_libraries(mpc ipopt z ssl uv uWS python)
 

@@ -1,6 +1,8 @@
 #include "MPC.h"
 
 #include "constants.h"
+#include "Visualization.h"
+
 
 #include <cppad/ipopt/solve.hpp>
 
@@ -14,10 +16,15 @@ using CppAD::AD;
 
 
 class FG_eval {
+protected:
+  //! polynomial coefficients
+  Eigen::VectorXd coeffs_;
+  //! weights for some of the cost terms
+  map<string, double> const & weights_;
+
+
  public:
-  // Fitted polynomial coefficients
-  Eigen::VectorXd coeffs;
-  FG_eval(Eigen::VectorXd coeffs) { this->coeffs = coeffs; }
+  FG_eval(Eigen::VectorXd const & coeffs, map<string, double> const & weights) : coeffs_(coeffs), weights_(weights) { }
 
   typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
   void operator()(ADvector& fg, const ADvector& vars) {
@@ -30,7 +37,7 @@ class FG_eval {
 
     // The part of the cost based on the reference state.
     for (int t = 0; t < N; t++) {
-      fg[0] += 10*CppAD::pow(vars[cte_start + t], 2);
+      fg[0] += CppAD::pow(vars[cte_start + t], 2);
       fg[0] += CppAD::pow(vars[epsi_start + t], 2);
       fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
@@ -43,8 +50,8 @@ class FG_eval {
 
     // Minimize the value gap between sequential actuations.
     for (int t = 0; t < N - 2; t++) {
-      fg[0] += CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
-      fg[0] += CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
+      fg[0] += weights_.at("steering_velocity") * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
+      fg[0] += weights_.at("jerk")              * CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
 
 
@@ -84,10 +91,10 @@ class FG_eval {
       AD<double> a0 = vars[a_start + t - 1];
 
       // TODO: this depends on poly_order==3!! 
-      // .. f(x) = coeffs[3]x^3 + coeffs[2]x^2 + coeffs[1]*x + coeffs[0]
-      AD<double> f0 = coeffs[3]*CppAD::pow(x0, 3) + coeffs[2]*CppAD::pow(x0, 2) + coeffs[1]*x0 + coeffs[0];
-      // .. f'(x) = 3*coeffs[3]x^2 + 2*coeffs[2]x + coeffs[1]
-      AD<double> psides0 = CppAD::atan( 3*coeffs[3]*CppAD::pow(x0, 2) + 2*coeffs[2]*x0 + coeffs[1] );
+      // .. f(x) = coeffs_[3]x^3 + coeffs_[2]x^2 + coeffs_[1]*x + coeffs_[0]
+      AD<double> f0 = coeffs_[3]*CppAD::pow(x0, 3) + coeffs_[2]*CppAD::pow(x0, 2) + coeffs_[1]*x0 + coeffs_[0];
+      // .. f'(x) = 3*coeffs_[3]x^2 + 2*coeffs_[2]x + coeffs_[1]
+      AD<double> psides0 = CppAD::atan( 3*coeffs_[3]*CppAD::pow(x0, 2) + 2*coeffs_[2]*x0 + coeffs_[1] );
 
       // Here's `x` to get you started.
       // The idea here is to constraint this value to be 0.
@@ -114,10 +121,15 @@ class FG_eval {
 //
 // MPC class definition implementation.
 //
-MPC::MPC() {}
+MPC::MPC() {
+  weights_["steering_velocity"] = 300;
+  weights_["jerk"]              = 50;
+  latency_                      = 0.1;
+  visualizer_                   = new Visualizer();
+}
 MPC::~MPC() {}
 
-Dvector MPC::solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
+Dvector MPC::solve(Eigen::VectorXd state) {
   // IPOpt error state
   bool ok = true;
   // number of independent variables: N timesteps == N - 1 actuations
@@ -132,6 +144,7 @@ Dvector MPC::solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   double v = state[3];
   double cte = state[4];
   double epsi = state[5];
+  double steering = state[6];
 
 
   // Initial value of the independent variables.
@@ -167,7 +180,7 @@ Dvector MPC::solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
     vars_upperbound[i] = 0.436332;
   }
 
-  // Acceleration/decceleration upper and lower limits.
+  // Acceleration/deceleration upper and lower limits.
   // NOTE: Feel free to change this to something else.
   for (int i = a_start; i < n_vars; i++) {
     vars_lowerbound[i] = -1.0;
@@ -197,9 +210,18 @@ Dvector MPC::solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   constraints_upperbound[cte_start] = cte;
   constraints_upperbound[epsi_start] = epsi;
 
+  // account for latency: fix the first n steering commands
+  /*int freeze_command_steps = ceil(0.15/dt);
+  for (int i = 0; i < freeze_command_steps; i++) {
+    constraints_lowerbound[delta_start+i] = steering;
+    constraints_upperbound[delta_start+i] = steering;
+  }*/
+  
+
+
 
   // object that computes objective and constraints
-  FG_eval fg_eval(coeffs);
+  FG_eval fg_eval(referenceLine_.getCoeffs(), weights_);
   
 
   // place to return solution
@@ -213,7 +235,8 @@ Dvector MPC::solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // Check some of the solution values
   ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
   if(not ok) {
-    throw runtime_error("Solver not okay :/");
+    cerr << "Solver not okay :/" << endl;
+    //throw runtime_error("Solver not okay :/");
   }
 
   // Cost
@@ -225,16 +248,13 @@ Dvector MPC::solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
 }
 
 
-tuple<double, double> MPC::Calculate(vector<double> const & waypoints_global_x, vector<double> const & waypoints_global_y, double px, double py, double psi, double v) {
+tuple<double, double> MPC::Calculate(vector<double> const & waypoints_global_x, vector<double> const & waypoints_global_y, double px, double py, double psi, double v, double throttle, double steering) {
   
   // set new vehicle state
-  vehicleState_ = VehicleState(px, py, psi, v);
-
-  // transform waypoints from global to local coordinate system
-  transformWaypoints(waypoints_global_x, waypoints_global_y);
+  vehicleState_ = VehicleState(px, py, psi, v, throttle, steering);
 
   // fit a polynome to the local waypoints
-  calcReferenceLine();
+  calcReferenceLine(waypoints_global_x, waypoints_global_y);
 
   // get current orientation and cross-track error
   // .. the reference line is relative to the vehicle (which is therefore at (0,0), so eval(0) gives the cte
@@ -243,21 +263,27 @@ tuple<double, double> MPC::Calculate(vector<double> const & waypoints_global_x, 
   double epsi = -atan(referenceLine_.derivative(0));
 
   // gather start state of the MPC
-  Eigen::VectorXd state(6);
-  state << 0, 0, 0, vehicleState_.v, cte, epsi;
+  Eigen::VectorXd startState(7);
+  startState << 0, 0, 0, vehicleState_.v, cte, epsi, vehicleState_.steering;
   
   // run the optimization
   auto start = std::chrono::high_resolution_clock::now();
-  mpcSolution_ = solve(state, referenceLine_.getCoeffs());
+  mpcSolution_ = solve(startState);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<float> duration = end - start;
   std::cout << "Time: " << duration.count() << std::endl;
 
   
   // return values
-  double steer_value = mpcSolution_[delta_start];
-  double throttle_value = mpcSolution_[a_start];
+  int latencyCompensatedCmdIndex = 0;//ceil(0.15/dt);
+  double steer_value            = mpcSolution_[delta_start + latencyCompensatedCmdIndex];
+  double throttle_value         = mpcSolution_[a_start + latencyCompensatedCmdIndex];
   cout << "CMD: [" << steer_value << " - " << throttle_value << "]" << endl;
+
+  // visualization
+  if(doVisualize_) {
+    visualizer_->setData(mpcSolution_);
+  }
 
   return std::make_pair(steer_value, throttle_value);
 }
@@ -285,7 +311,12 @@ void MPC::transformWaypoints(vector<double> const & waypoints_global_x, vector<d
 }
 
 
-void MPC::calcReferenceLine() {
+void MPC::calcReferenceLine(vector<double> const & waypoints_global_x, vector<double> const & waypoints_global_y) {
+
+  // transform waypoints from global to local coordinate system
+  transformWaypoints(waypoints_global_x, waypoints_global_y);
+
+  // fit polynome to local waypoints
   referenceLine_ = Polynome(waypoints_local_x_, waypoints_local_y_, 3);
 }
 

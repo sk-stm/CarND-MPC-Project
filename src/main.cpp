@@ -4,11 +4,10 @@
 #include <iostream>
 #include <thread>
 #include <vector>
-#include "Eigen-3.3/Eigen/Core"
-#include "Eigen-3.3/Eigen/QR"
-#include "MPC.h"
 #include "json.hpp"
 #include <tuple>
+
+#include "MPC.h"
 
 // for convenience
 using json = nlohmann::json;
@@ -33,38 +32,6 @@ string hasData(string s) {
   return "";
 }
 
-// Evaluate a polynomial.
-double polyeval(Eigen::VectorXd coeffs, double x) {
-  double result = 0.0;
-  for (int i = 0; i < coeffs.size(); i++) {
-    result += coeffs[i] * pow(x, i);
-  }
-  return result;
-}
-
-// Fit a polynomial.
-// Adapted from
-// https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
-Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
-                        int order) {
-  assert(xvals.size() == yvals.size());
-  assert(order >= 1 && order <= xvals.size() - 1);
-  Eigen::MatrixXd A(xvals.size(), order + 1);
-
-  for (int i = 0; i < xvals.size(); i++) {
-    A(i, 0) = 1.0;
-  }
-
-  for (int j = 0; j < xvals.size(); j++) {
-    for (int i = 0; i < order; i++) {
-      A(j, i + 1) = A(j, i) * xvals(j);
-    }
-  }
-
-  auto Q = A.householderQr();
-  auto result = Q.solve(yvals);
-  return result;
-}
 
 int main() {
   uWS::Hub h;
@@ -88,27 +55,30 @@ int main() {
           // j[1] is the data JSON object
           vector<double> ptsx = j[1]["ptsx"];
           vector<double> ptsy = j[1]["ptsy"];
-          double px = j[1]["x"];
-          double py = j[1]["y"];
-          double psi = j[1]["psi"];
-          double v = j[1]["speed"];
+          double px       = j[1]["x"];
+          double py       = j[1]["y"];
+          double psi      = j[1]["psi"];
+          double v        = double(j[1]["speed"]) * 0.44704; // MPH -> mps
+          double throttle = j[1]["throttle"];
+          double steering = double(j[1]["steering_angle"]); // strangely on this side I don't need conversion oO
+          
 
           /*
           * TODO: Calculate steering angle and throttle using MPC.
-          *
           * Both are in between [-1, 1].
-          *
           */
-          double steer_value;
-          double throttle_value;
-          std::tie(steer_value, throttle_value) = mpc.Calculate(ptsx, ptsy, px, py, psi, v);
+          double steer_cmd;
+          double throttle_cmd;
+          std::tie(steer_cmd, throttle_cmd) = mpc.Calculate(ptsx, ptsy, px, py, psi, v, throttle, steering);
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
           // Also, simulator steering is inverse.
-          msgJson["steering_angle"] = -steer_value / 0.436332;
-          msgJson["throttle"] = throttle_value;
+          msgJson["steering_angle"] = -steer_cmd / deg2rad(25.);
+          msgJson["throttle"]       = throttle_cmd;
+          //cout << "steering i/o: " << steering << " - " << -steer_cmd / deg2rad(25.) << endl;
+          cout << "throttle i/o: " << throttle << " - " << throttle_cmd << endl;
 
           //Display the MPC predicted trajectory 
           vector<double> mpc_x_vals;
