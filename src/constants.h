@@ -24,14 +24,15 @@ string getOptions() {
 /*********************************************/
 
 //! number of trajectory points
-const size_t N = 10;
-//! time step between trajectory points
-const double dt = 0.2;
-// steering ration, tunes by Udacity
+size_t N = 15;
+//! time step between trajectory points (in my setup, this needs to be exactly the latency of the system)
+double dt = 0.1;
+// steering ration, tuned by Udacity
 const double Lf = 2.67;
-
 //! target velocity (m/s)
-const double ref_v = 20;
+double ref_v = 30;
+//! max centripetal acceleration (m/s^2)
+double max_ca = 3;
 
 
 //  IPOpt variable indices

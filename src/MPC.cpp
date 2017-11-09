@@ -8,6 +8,8 @@
 
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/Geometry"
+#include "json.hpp"
+
 
 #include <chrono>
 
@@ -24,7 +26,9 @@ protected:
 
 
  public:
-  FG_eval(Eigen::VectorXd const & coeffs, map<string, double> const & weights) : coeffs_(coeffs), weights_(weights) { }
+  FG_eval(Eigen::VectorXd const & coeffs, map<string, double> const & weights) : 
+    coeffs_(coeffs), 
+    weights_(weights) { }
 
   typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
   void operator()(ADvector& fg, const ADvector& vars) {
@@ -67,6 +71,8 @@ protected:
     fg[1 + v_start] = vars[v_start];
     fg[1 + cte_start] = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
+    // account for latency: fix the first actuation command
+    fg[1 + delta_start] = vars[delta_start];
 
     // The rest of the constraints
     for (int t = 1; t < N; t++) {
@@ -126,6 +132,13 @@ MPC::MPC() {
   weights_["jerk"]              = 50;
   latency_                      = 0.1;
   visualizer_                   = new Visualizer();
+
+  // parse input params
+  auto params = nlohmann::json::parse(std::ifstream("params.json"));
+  dt     = params["dt"];
+  N      = params["N"];
+  ref_v  = params["ref_v"];
+  max_ca = params["max_ca"];
 }
 MPC::~MPC() {}
 
@@ -135,7 +148,7 @@ Dvector MPC::solve(Eigen::VectorXd state) {
   // number of independent variables: N timesteps == N - 1 actuations
   static size_t n_vars = N * 6 + (N - 1) * 2;
   // Number of constraints
-  static size_t n_constraints = N * 6;
+  static size_t n_constraints = N * 6 + (N - 1) * 2;
 
   // start variables
   double x = state[0];
@@ -161,6 +174,7 @@ Dvector MPC::solve(Eigen::VectorXd state) {
   vars[v_start] = v;
   vars[cte_start] = cte;
   vars[epsi_start] = epsi;
+  vars[delta_start] = steering;
 
   Dvector vars_lowerbound(n_vars);
   Dvector vars_upperbound(n_vars);
@@ -210,13 +224,9 @@ Dvector MPC::solve(Eigen::VectorXd state) {
   constraints_upperbound[cte_start] = cte;
   constraints_upperbound[epsi_start] = epsi;
 
-  // account for latency: fix the first n steering commands
-  /*int freeze_command_steps = ceil(0.15/dt);
-  for (int i = 0; i < freeze_command_steps; i++) {
-    constraints_lowerbound[delta_start+i] = steering;
-    constraints_upperbound[delta_start+i] = steering;
-  }*/
-  
+  // account for latency: fix the first steering
+  constraints_lowerbound[delta_start] = steering;
+  constraints_upperbound[delta_start] = steering;
 
 
 
@@ -275,9 +285,8 @@ tuple<double, double> MPC::Calculate(vector<double> const & waypoints_global_x, 
 
   
   // return values
-  int latencyCompensatedCmdIndex = 0;//ceil(0.15/dt);
-  double steer_value            = mpcSolution_[delta_start + latencyCompensatedCmdIndex];
-  double throttle_value         = mpcSolution_[a_start + latencyCompensatedCmdIndex];
+  double steer_value             = mpcSolution_[delta_start + 1];
+  double throttle_value          = mpcSolution_[a_start + 1];
   cout << "CMD: [" << steer_value << " - " << throttle_value << "]" << endl;
 
   // visualization
