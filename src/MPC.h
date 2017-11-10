@@ -87,9 +87,6 @@ protected:
 
   //! the weights for some cost terms
   map<string, double> weights_;
-
-  //! the latency between input and actual actuation
-  double latency_ = {0.0};
 };
 
 #endif /* MPC_H */

@@ -41,21 +41,33 @@ protected:
 
     // The part of the cost based on the reference state.
     for (int t = 0; t < N; t++) {
-      fg[0] += CppAD::pow(vars[cte_start + t], 2);
-      fg[0] += CppAD::pow(vars[epsi_start + t], 2);
-      fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
+      fg[0] += weights_.at("cte")  * CppAD::pow(vars[cte_start + t], 2);
+      fg[0] += weights_.at("epsi") * CppAD::pow(vars[epsi_start + t], 2);
+      fg[0] += weights_.at("v")    * CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
 
     // Minimize the use of actuators.
     for (int t = 0; t < N - 1; t++) {
-      fg[0] += CppAD::pow(vars[delta_start + t], 2);
-      fg[0] += CppAD::pow(vars[a_start + t], 2);
+      fg[0] += weights_.at("steering") * CppAD::pow(vars[delta_start + t], 2);
+      fg[0] += weights_.at("throttle") * CppAD::pow(vars[a_start + t], 2);
     }
 
     // Minimize the value gap between sequential actuations.
     for (int t = 0; t < N - 2; t++) {
       fg[0] += weights_.at("steering_velocity") * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
       fg[0] += weights_.at("jerk")              * CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
+    }
+
+    // Minimize the centripetal acceleration (i.e. brake for curves).
+    // a_r = v^2 / r;
+    for (int t = 0; t < N; t++) {
+      auto x = vars[x_start + t];
+      auto v = vars[v_start + t];
+      auto curve_d  = 3*coeffs_[3]*CppAD::pow(x, 2) + 2*coeffs_[2]*x + coeffs_[1];
+      auto curve_dd = 6*coeffs_[3]*x + 2*coeffs_[2];
+      auto r        = CppAD::pow(1. + CppAD::pow(curve_d, 2), 2./3) / CppAD::abs(curve_dd);
+      auto a_r      = CppAD::pow(v, 2) / r;
+      fg[0] += weights_.at("ca") * CppAD::pow(a_r, 2) ;
     }
 
 
@@ -128,17 +140,21 @@ protected:
 // MPC class definition implementation.
 //
 MPC::MPC() {
-  weights_["steering_velocity"] = 300;
-  weights_["jerk"]              = 50;
-  latency_                      = 0.1;
   visualizer_                   = new Visualizer();
 
   // parse input params
   auto params = nlohmann::json::parse(std::ifstream("params.json"));
-  dt     = params["dt"];
-  N      = params["N"];
-  ref_v  = params["ref_v"];
-  max_ca = params["max_ca"];
+  dt                            = params["dt"];
+  N                             = params["N"];
+  ref_v                         = params["ref_v"];
+  weights_["steering_velocity"] = params["weights"]["steering_velocity"];
+  weights_["jerk"]              = params["weights"]["jerk"];
+  weights_["cte"]               = params["weights"]["cte"];
+  weights_["epsi"]              = params["weights"]["epsi"];
+  weights_["v"]                 = params["weights"]["v"];
+  weights_["steering"]          = params["weights"]["steering"];
+  weights_["throttle"]          = params["weights"]["throttle"];
+  weights_["ca"]                = params["weights"]["ca"];
 }
 MPC::~MPC() {}
 

@@ -30,9 +30,7 @@ double dt = 0.1;
 // steering ration, tuned by Udacity
 const double Lf = 2.67;
 //! target velocity (m/s)
-double ref_v = 30;
-//! max centripetal acceleration (m/s^2)
-double max_ca = 3;
+double ref_v = 20;
 
 
 //  IPOpt variable indices
