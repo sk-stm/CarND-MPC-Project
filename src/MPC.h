@@ -63,6 +63,13 @@ protected:
    * Builds the local reference line transforming global waypoints and polynome fitting through them.
    **/
   void calcReferenceLine(vector<double> const & waypoints_global_x, vector<double> const & waypoints_global_y);
+
+  /**
+   * Forward simulates the vehicle state with the CTRV motion model.
+   * @note Udacity presented a very simplified kinematic model:
+   * @see https://discussions.udacity.com/t/small-angle-approximation-in-psi-prediction-equation/306208
+   **/
+  void forwardSimulate(double t);
   
   //! the x-values of the waypoints, transformed to be w.r.t. the vehicle frame
   vector<double> waypoints_local_x_;

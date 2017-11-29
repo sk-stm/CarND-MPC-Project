@@ -58,15 +58,25 @@ int main() {
           double px       = j[1]["x"];
           double py       = j[1]["y"];
           double psi      = j[1]["psi"];
-          double v        = double(j[1]["speed"]) * 0.44704; // MPH -> mps
+          // velocity reported by the simulator comes in MPH
+          double v        = double(j[1]["speed"]) * 0.44704; // convert units MPH -> mps
           double throttle = j[1]["throttle"];
-          double steering = double(j[1]["steering_angle"]); // strangely on this side I don't need conversion oO
+          // steering reported by the simulator comes as steering angle (in between [-deg2rad(25), deg2rad(25]) with wrong sign
+          double steering = -double(j[1]["steering_angle"]); // correct inverted sign
           
+          // print incoming vehicle state
+          cout << endl;
+          cout << "------------------------------------------" << endl;
+          cout << "------- Vehicle State --------------------" << endl;
+          cout << "-- px:    " << px << endl;
+          cout << "-- py:    " << py << endl;
+          cout << "-- psi:   " << psi << endl;
+          cout << "-- v:     " << v << endl;
+          cout << "-- a:     " << throttle << endl;
+          cout << "-- delta: " << steering << endl;
 
-          /*
-          * TODO: Calculate steering angle and throttle using MPC.
-          * Both are in between [-1, 1].
-          */
+          // Calculate steering angle and throttle using MPC.
+          cout << "------- MPC ------------------------------" << endl;
           double steer_cmd;
           double throttle_cmd;
           std::tie(steer_cmd, throttle_cmd) = mpc.Calculate(ptsx, ptsy, px, py, psi, v, throttle, steering);
@@ -77,8 +87,13 @@ int main() {
           // Also, simulator steering is inverse.
           msgJson["steering_angle"] = -steer_cmd / deg2rad(25.);
           msgJson["throttle"]       = throttle_cmd;
-          //cout << "steering i/o: " << steering << " - " << -steer_cmd / deg2rad(25.) << endl;
-          cout << "throttle i/o: " << throttle << " - " << throttle_cmd << endl;
+
+          // print commands sent
+          cout << "------- Commands -------------------------" << endl;
+          cout << "-- steering: " << steer_cmd << " (" << msgJson["steering_angle"] << ")" << endl;
+          cout << "-- throttle: " << throttle_cmd << endl;
+          cout << "------------------------------------------" << endl;
+          
 
           //Display the MPC predicted trajectory 
           vector<double> mpc_x_vals;

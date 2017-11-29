@@ -1,15 +1,16 @@
 {
-    "dt": 0.12,
+    "dt": 0.1,
+    "latency": 0.12, 
     "N": 15,
-    "ref_v": 30,
+    "ref_v": 44,
     "weights" : {
-        "steering_velocity": 500,
-        "jerk": 50,
-        "cte": 1,
-        "epsi": 1,
+        "cte": 20,
+        "epsi": 10,
         "v": 1,
         "steering": 100,
+        "steering_velocity": 100,
         "throttle": 1,
-        "ca": 20
+        "jerk": 50,
+        "ca": 2
     }
 }

@@ -25,12 +25,14 @@ string getOptions() {
 
 //! number of trajectory points
 size_t N = 15;
-//! time step between trajectory points (in my setup, this needs to be exactly the latency of the system)
+//! time step between trajectory points (in my setup, this needs to be exactly the latency of the system) [s]
 double dt = 0.1;
-// steering ration, tuned by Udacity
+// steering ratio, tuned by Udacity
 const double Lf = 2.67;
 //! target velocity (m/s)
 double ref_v = 20;
+//! the system latency (time between sending commands and their actual execution) [s]
+double latency = 0.1;
 
 
 //  IPOpt variable indices

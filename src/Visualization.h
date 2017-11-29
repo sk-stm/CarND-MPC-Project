@@ -24,7 +24,7 @@ public:
       while(run_) {
         if(dirty_) {
           dirty_ = false;
-          plot(data_);
+          plot(solutionData_);
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -37,14 +37,22 @@ public:
     worker_.join();
   }
 
-  void setData(Dvector const & solution) {
-    data_ = solution;
+  void setData(Dvector const & solution, Eigen::VectorXd vehicleState) {
+    solutionData_ = solution;
+    
+    velocityData.push_back(vehicleState[3]);
+    if(velocityData.size() > 3. / dt) {
+      velocityData.pop_front();
+    }
+    
+    
     dirty_ = true;
   }
 
 private:
   std::thread worker_;
-  Dvector data_;
+  Dvector solutionData_;
+  std::deque<float> velocityData;
   bool dirty_ {false};
   bool run_{false};
 
@@ -96,7 +104,5 @@ private:
 
     plt::pause(0.001);
       
-  };
-protected:
-  
+  };  
 };

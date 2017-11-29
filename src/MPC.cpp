@@ -3,9 +3,7 @@
 #include "constants.h"
 #include "Visualization.h"
 
-
 #include <cppad/ipopt/solve.hpp>
-
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/Geometry"
 #include "json.hpp"
@@ -14,7 +12,6 @@
 #include <chrono>
 
 using CppAD::AD;
-
 
 
 class FG_eval {
@@ -58,16 +55,23 @@ protected:
       fg[0] += weights_.at("jerk")              * CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
 
-    // Minimize the centripetal acceleration (i.e. brake for curves).
-    // a_r = v^2 / r;
-    for (int t = 0; t < N; t++) {
-      auto x = vars[x_start + t];
+    // Minimize the centripetal acceleration (i.e. brake for curves) ..
+    // .. calculate ca from steering angle and velocity
+    // see: https://discussions.udacity.com/t/tuning-n-and-dt-can-it-be-dynamic/379832)
+    //      https://nabinsharma.wordpress.com/2014/01/02/kinematics-of-a-robot-bicycle-model/
+    for (int t = 0; t < N - 1; t++) {
+      // absolute steering angle + eps (such that division by zero is avoided)
+      // could this also be solved with conditional expressions? https://www.coin-or.org/CppAD/Doc/cond_exp.cpp.htm
+      auto delta = CppAD::abs(vars[delta_start + t]) + 1e-6;
+      // the turning radius: r = L / tan(delta)
+      auto r = Lf / CppAD::tan(delta);
+      // centripetal acceleration: a_r = v^2 / r;
       auto v = vars[v_start + t];
-      auto curve_d  = 3*coeffs_[3]*CppAD::pow(x, 2) + 2*coeffs_[2]*x + coeffs_[1];
-      auto curve_dd = 6*coeffs_[3]*x + 2*coeffs_[2];
-      auto r        = CppAD::pow(1. + CppAD::pow(curve_d, 2), 2./3) / CppAD::abs(curve_dd);
-      auto a_r      = CppAD::pow(v, 2) / r;
-      fg[0] += weights_.at("ca") * CppAD::pow(a_r, 2) ;
+      auto a_r = CppAD::pow(v, 2) / r;
+      fg[0] += weights_.at("ca") * CppAD::pow(a_r, 2);
+
+      // simple version:
+      //fg[0] += weights_.at("ca") * CppAD::pow(v * delta, 2);
     }
 
 
@@ -83,11 +87,10 @@ protected:
     fg[1 + v_start] = vars[v_start];
     fg[1 + cte_start] = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
-    // account for latency: fix the first actuation command
-    fg[1 + delta_start] = vars[delta_start];
 
     // The rest of the constraints
     for (int t = 1; t < N; t++) {
+
       // The state at time t+1 .
       AD<double> x1 = vars[x_start + t];
       AD<double> y1 = vars[y_start + t];
@@ -145,6 +148,7 @@ MPC::MPC() {
   // parse input params
   auto params = nlohmann::json::parse(std::ifstream("params.json"));
   dt                            = params["dt"];
+  latency                       = params["latency"];
   N                             = params["N"];
   ref_v                         = params["ref_v"];
   weights_["steering_velocity"] = params["weights"]["steering_velocity"];
@@ -173,7 +177,6 @@ Dvector MPC::solve(Eigen::VectorXd state) {
   double v = state[3];
   double cte = state[4];
   double epsi = state[5];
-  double steering = state[6];
 
 
   // Initial value of the independent variables.
@@ -190,7 +193,6 @@ Dvector MPC::solve(Eigen::VectorXd state) {
   vars[v_start] = v;
   vars[cte_start] = cte;
   vars[epsi_start] = epsi;
-  vars[delta_start] = steering;
 
   Dvector vars_lowerbound(n_vars);
   Dvector vars_upperbound(n_vars);
@@ -240,10 +242,6 @@ Dvector MPC::solve(Eigen::VectorXd state) {
   constraints_upperbound[cte_start] = cte;
   constraints_upperbound[epsi_start] = epsi;
 
-  // account for latency: fix the first steering
-  constraints_lowerbound[delta_start] = steering;
-  constraints_upperbound[delta_start] = steering;
-
 
 
   // object that computes objective and constraints
@@ -267,7 +265,7 @@ Dvector MPC::solve(Eigen::VectorXd state) {
 
   // Cost
   auto cost = solution.obj_value;
-  std::cout << "Cost " << cost << std::endl;
+  std::cout << "-- cost " << cost << std::endl;
 
   // return the first actuator values
   return solution.x;
@@ -275,9 +273,12 @@ Dvector MPC::solve(Eigen::VectorXd state) {
 
 
 tuple<double, double> MPC::Calculate(vector<double> const & waypoints_global_x, vector<double> const & waypoints_global_y, double px, double py, double psi, double v, double throttle, double steering) {
-  
+
   // set new vehicle state
   vehicleState_ = VehicleState(px, py, psi, v, throttle, steering);
+
+  // forward simulate the vehicle to account for latency
+  forwardSimulate(latency);
 
   // fit a polynome to the local waypoints
   calcReferenceLine(waypoints_global_x, waypoints_global_y);
@@ -297,20 +298,29 @@ tuple<double, double> MPC::Calculate(vector<double> const & waypoints_global_x, 
   mpcSolution_ = solve(startState);
   auto end = std::chrono::high_resolution_clock::now();
   std::chrono::duration<float> duration = end - start;
-  std::cout << "Time: " << duration.count() << std::endl;
+  std::cout << "-- time: " << std::setprecision(2) << duration.count() << std::endl;
 
   
   // return values
-  double steer_value             = mpcSolution_[delta_start + 1];
-  double throttle_value          = mpcSolution_[a_start + 1];
-  cout << "CMD: [" << steer_value << " - " << throttle_value << "]" << endl;
+  double steer_value             = mpcSolution_[delta_start];
+  double throttle_value          = mpcSolution_[a_start];
 
   // visualization
   if(doVisualize_) {
-    visualizer_->setData(mpcSolution_);
+    visualizer_->setData(mpcSolution_, startState);
   }
 
   return std::make_pair(steer_value, throttle_value);
+}
+
+void MPC::forwardSimulate(double dTime) {
+  vehicleState_.x   = vehicleState_.x + vehicleState_.v * cos(vehicleState_.psi) * dTime;
+  vehicleState_.y   = vehicleState_.y + vehicleState_.v * sin(vehicleState_.psi) * dTime;
+  vehicleState_.psi = vehicleState_.psi + vehicleState_.v / Lf * tan(vehicleState_.steering) * dTime;
+
+  // unfortunately the simulator reports wrong throttle/acceleration values
+  // see: https://discussions.udacity.com/t/how-to-incorporate-latency-into-the-model/257391/88
+  vehicleState_.v = vehicleState_.v + vehicleState_.throttle * dTime;
 }
 
 void MPC::transformWaypoints(vector<double> const & waypoints_global_x, vector<double> const & waypoints_global_y) {
