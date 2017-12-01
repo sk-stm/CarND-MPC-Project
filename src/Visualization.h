@@ -5,6 +5,7 @@
 
 #include <cppad/cppad.hpp>
 #include <chrono>
+#include <mutex>
 #include <thread>
 
 namespace plt = matplotlibcpp;
@@ -24,10 +25,10 @@ public:
       while(run_) {
         if(dirty_) {
           dirty_ = false;
-          plot(solutionData_);
+          plot();
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
       }
     });
   }
@@ -38,11 +39,17 @@ public:
   }
 
   void setData(Dvector const & solution, Eigen::VectorXd vehicleState) {
+    std::lock_guard<std::mutex> lock{mutex_};
     solutionData_ = solution;
     
-    velocityData.push_back(vehicleState[3]);
-    if(velocityData.size() > 3. / dt) {
-      velocityData.pop_front();
+    velocityData_.push_back(vehicleState[3]);
+    if(velocityData_.size() > 4. / dt) {
+      velocityData_.erase(velocityData_.begin());
+    }
+
+    steeringData_.push_back(vehicleState[6]);
+    if(steeringData_.size() > 4. / dt) {
+      steeringData_.erase(steeringData_.begin());
     }
     
     
@@ -50,14 +57,18 @@ public:
   }
 
 private:
+  std::mutex mutex_;
   std::thread worker_;
   Dvector solutionData_;
-  std::deque<float> velocityData;
+  std::vector<float> velocityData_;
+  std::vector<float> steeringData_;
+  
   bool dirty_ {false};
   bool run_{false};
 
 
-  void plot(Dvector const & solution){
+  void plot(){
+    mutex_.lock();
     vector<float> steering;
     vector<float> throttle;
     vector<float> velocity;
@@ -67,17 +78,19 @@ private:
 
     // fill actuation data
     for(size_t i = 0; i < N-1; ++i) {
-      steering.push_back(solution[delta_start+i]);
-      throttle.push_back(solution[a_start+i]);
+      steering.push_back(solutionData_[delta_start+i]);
+      throttle.push_back(solutionData_[a_start+i]);
     }
 
     // fill trajectory data
     for(size_t i = 0; i < N; ++i) {
-      velocity.push_back(solution[v_start+i]);
-      psi.push_back(solution[psi_start+i]);
-      cte.push_back(solution[cte_start+i]);
-      epsi.push_back(solution[epsi_start+i]);
+      velocity.push_back(solutionData_[v_start+i]);
+      psi.push_back(solutionData_[psi_start+i]);
+      cte.push_back(solutionData_[cte_start+i]);
+      epsi.push_back(solutionData_[epsi_start+i]);
     }
+    mutex_.unlock();
+
 
 
     //
@@ -86,20 +99,27 @@ private:
     // clear previous plot
     plt::clf();
     
-    plt::subplot(3, 1, 1);
+    plt::subplot(5, 1, 1);
     plt::named_plot("steering (rad)", steering);
-    plt::named_plot("throttle", throttle);
+    plt::named_plot("throttle (m/s)", throttle);
     plt::title("MPC Trajectory");
     plt::legend();
 
-    plt::subplot(3, 1, 2);
+    plt::subplot(5, 1, 2);
     plt::named_plot("velocity (m/s)", velocity);
-    plt::named_plot("orientation (rad)", psi);
     plt::legend();
 
-    plt::subplot(3, 1, 3);
+    plt::subplot(5, 1, 3);
     plt::named_plot("cte (m)", cte);
     plt::named_plot("epsi (rad)", epsi);
+    plt::legend();
+
+    plt::subplot(5, 1, 4);
+    plt::named_plot("hist. v (m/s)", velocityData_);
+    plt::legend();
+
+    plt::subplot(5, 1, 5);
+    plt::named_plot("hist. steering (rad)", steeringData_);
     plt::legend();
 
     plt::pause(0.001);

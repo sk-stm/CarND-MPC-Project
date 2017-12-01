@@ -259,7 +259,7 @@ Dvector MPC::solve(Eigen::VectorXd state) {
   // Check some of the solution values
   ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
   if(not ok) {
-    cerr << "Solver not okay :/" << endl;
+    cerr << "-- success: Solver not okay, status: " << solution.status << endl;
     //throw runtime_error("Solver not okay :/");
   }
 
