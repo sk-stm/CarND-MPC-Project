@@ -260,12 +260,11 @@ Dvector MPC::solve(Eigen::VectorXd state) {
   ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
   if(not ok) {
     cerr << "-- success: Solver not okay, status: " << solution.status << endl;
-    //throw runtime_error("Solver not okay :/");
   }
 
   // Cost
   auto cost = solution.obj_value;
-  std::cout << "-- cost " << cost << std::endl;
+  std::cout << "-- cost: " << cost << std::endl;
 
   // return the first actuator values
   return solution.x;
