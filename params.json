@@ -2,11 +2,11 @@
     "dt": 0.1,
     "latency": 0.12, 
     "N": 15,
-    "ref_v": 44,
+    "ref_v": 45,
     "weights" : {
         "cte": 20,
         "epsi": 10,
-        "v": 1,
+        "v": 2,
         "steering": 100,
         "steering_velocity": 100,
         "throttle": 1,
