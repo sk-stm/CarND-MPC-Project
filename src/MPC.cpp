@@ -168,7 +168,7 @@ Dvector MPC::solve(Eigen::VectorXd state) {
   // number of independent variables: N timesteps == N - 1 actuations
   static size_t n_vars = N * 6 + (N - 1) * 2;
   // Number of constraints
-  static size_t n_constraints = N * 6 + (N - 1) * 2;
+  static size_t n_constraints = N * 6;
 
   // start variables
   double x = state[0];
@@ -284,6 +284,8 @@ tuple<double, double> MPC::Calculate(vector<double> const & waypoints_global_x, 
 
   // get current orientation and cross-track error
   // .. the reference line is relative to the vehicle (which is therefore at (0,0), so eval(0) gives the cte
+  // .. the cte in this case is "wrong" or simplified, 
+  // .. see https://discussions.udacity.com/t/why-does-cte-only-consider-y/362061/13 
   double cte = referenceLine_.eval(0);
   // .. similar, our vehicle's rotation is zero in this frame, so the orientation error is the gradient orientation (i.e. slope direction) at 0
   double epsi = -atan(referenceLine_.derivative(0));
