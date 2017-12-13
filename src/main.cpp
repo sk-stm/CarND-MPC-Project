@@ -1,5 +1,5 @@
 #include <math.h>
-#include <uWS.h>
+#include <uWS/uWS.h>
 #include <chrono>
 #include <iostream>
 #include <thread>

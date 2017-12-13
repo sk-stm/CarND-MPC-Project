@@ -19,15 +19,14 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 include_directories(/usr/local/opt/openssl/include)
 link_directories(/usr/local/opt/openssl/lib)
-link_directories(/usr/local/Cellar/libuv/1.15.0/lib)
-
-# uws - I don't want to install this with sudo!
-include_directories(~/Documents/uni.uni/udacity/selfdriving_cars/term_2/projects/_res/uWebSockets/src)
-link_directories(~/Documents/uni.uni/udacity/selfdriving_cars/term_2/projects/_res/uWebSockets/build)
+link_directories(/usr/local/Cellar/libuv/1*/lib)
 
 endif(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 
 add_executable(mpc ${sources})
 
+if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+target_link_libraries(mpc ipopt z ssl uv uWS python2.7)
+else()
 target_link_libraries(mpc ipopt z ssl uv uWS python)
-
+endif()
